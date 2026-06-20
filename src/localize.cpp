@@ -384,6 +384,18 @@ static void ApplyFixHighVersionFaceHair() {
     PatchCodeCave(0x009ACAA6, faceHairCave3, 6);    // Remove NPC dialogue restriction
 }
 
+// ============ 脚本消息框放大 ============
+// 放大NPC脚本对话框宽度以适配中文字符显示
+static void ApplyFixScriptDlgSize() {
+    Patch1(0x0068DE1F + 1, 0x86);  // 对话框宽度1
+    Patch1(0x0068DFBD + 1, 0x86);  // 对话框宽度2
+    Patch1(0x0068E0E7 + 1, 0x86);  // 对话框宽度3
+    Patch1(0x0068E534 + 1, 0x86);  // 对话框宽度4
+    Patch1(0x0068E65D + 1, 0x86);  // 对话框宽度5
+    Patch1(0x0068E709 + 1, 0x86);  // 对话框宽度6
+    Patch4(0x009A3D81, 480);       // UI元素宽度
+}
+
 // ============ Main Attach Function ============
 void AttachLocalizeMod() {
     // Read config
@@ -404,6 +416,7 @@ void AttachLocalizeMod() {
     }
 
     ApplyFixHighVersionFaceHair();
+    ApplyFixScriptDlgSize();
 
     // IME support
     if (g_nImeType == 0) {

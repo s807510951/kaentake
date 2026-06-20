@@ -671,6 +671,10 @@ void set_screen_resolution(int nResolution, bool bSave) {
             // CMapLoadable::ReloadBack
             reinterpret_cast<void(__thiscall*)(CMapLoadable*)>(0x00644491)(field);
         }
+        // force the quickslot to repaint now so its frame + slot count update immediately
+        if (CUIStatusBar::IsInstantiated()) {
+            reinterpret_cast<void(__thiscall*)(void*)>(0x008D82A7)(CUIStatusBar::GetInstance());
+        }
     }
     if (bSave) {
         g_nResolution = nResolution;

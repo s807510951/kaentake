@@ -7,6 +7,37 @@
 #include <algorithm>
 #include <vector>
 #include <tuple>
+#include <cstdio>
+#include <cstdarg>
+
+static void ResmanLog(const char* sFormat, ...) {
+    char msg[1024];
+    va_list args;
+    va_start(args, sFormat);
+    _vsnprintf_s(msg, sizeof(msg), _TRUNCATE, sFormat, args);
+    va_end(args);
+
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    char line[1200];
+    _snprintf_s(line, sizeof(line), _TRUNCATE, "[%02d:%02d:%02d.%03d] [resman] %s\r\n",
+                st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, msg);
+
+    char path[MAX_PATH];
+    GetModuleFileNameA(nullptr, path, MAX_PATH);
+    char* slash = strrchr(path, '\\');
+    if (slash) { *(slash + 1) = '\0'; }
+    strcat_s(path, MAX_PATH, "beauty_debug.txt");
+
+    HANDLE h = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                           nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h != INVALID_HANDLE_VALUE) {
+        SetFilePointer(h, 0, nullptr, FILE_END);
+        DWORD written = 0;
+        WriteFile(h, line, static_cast<DWORD>(strlen(line)), &written, nullptr);
+        CloseHandle(h);
+    }
+}
 
 
 static IWzNameSpacePtr g_pCustomNameSpace;
@@ -25,6 +56,7 @@ public:
         if (!std::binary_search(g_vecOverrides.begin(), g_vecOverrides.end(), Ztl_bstr_t(sPath))) {
             return hr;
         }
+        ResmanLog("OnGetLocalObject: fallback to Custom for %ls", sPath);
         return g_pCustomNameSpace->raw__OnGetLocalObject(nIndex, sPath, pnPathUsed, pvRet);
     }
 };
@@ -42,8 +74,29 @@ public:
         if (!std::binary_search(g_vecOverrides.begin(), g_vecOverrides.end(), pArchive->absoluteUOL)) {
             return hr;
         }
-        IWzPropertyPtr pProperty = get_rm()->GetObjectA(L"Custom/" + pArchive->absoluteUOL).GetUnknown();
-        IEnumVARIANTPtr pEnum = pProperty->_NewEnum;
+        ResmanLog("CWzProperty::Serialize: overriding %ls", pArchive->absoluteUOL);
+        IWzPropertyPtr pProperty;
+        try {
+            pProperty = get_rm()->GetObjectA(L"Custom/" + pArchive->absoluteUOL).GetUnknown();
+        } catch (...) {
+            ResmanLog("CWzProperty::Serialize: EXCEPTION in GetObjectA for %ls", pArchive->absoluteUOL);
+            return hr;
+        }
+        if (!pProperty) {
+            ResmanLog("CWzProperty::Serialize: GetObjectA returned null for Custom/%ls", pArchive->absoluteUOL);
+            return hr;
+        }
+        IEnumVARIANTPtr pEnum;
+        try {
+            pEnum = pProperty->_NewEnum;
+        } catch (...) {
+            ResmanLog("CWzProperty::Serialize: EXCEPTION in _NewEnum for Custom/%ls", pArchive->absoluteUOL);
+            return hr;
+        }
+        if (!pEnum) {
+            ResmanLog("CWzProperty::Serialize: _NewEnum returned null for Custom/%ls", pArchive->absoluteUOL);
+            return hr;
+        }
         while (true) {
             Ztl_variant_t vNext;
             ULONG uCeltFetched;
@@ -57,18 +110,21 @@ public:
                 this->Add(sNext, pProperty->item[sNext], false);
             }
         }
+        ResmanLog("CWzProperty::Serialize: override done for %ls", pArchive->absoluteUOL);
         return S_OK;
     }
 };
 
 
 void CWvsApp::InitializeResMan_hook() {
-    DEBUG_MESSAGE("CWvsApp::InitializeResMan");
+    ResmanLog("InitializeResMan_hook: start");
     CWvsApp::InitializeResMan(this);
+    ResmanLog("InitializeResMan_hook: base InitializeResMan done");
 
     // add custom namespace to root
     IWzWritableNameSpacePtr pWritableRoot;
     if (FAILED(get_root()->QueryInterface(&pWritableRoot))) {
+        ResmanLog("InitializeResMan_hook: FAILED to cast root namespace");
         ErrorMessage("Failed to cast root namespace");
         return;
     }
@@ -77,6 +133,7 @@ void CWvsApp::InitializeResMan_hook() {
     Ztl_variant_t vResult;
     pWritableRoot->AddObject(L"Custom", static_cast<IUnknown*>(pNameSpace), &vResult);
     g_pCustomNameSpace = vResult.GetUnknown();
+    ResmanLog("InitializeResMan_hook: Custom namespace created");
 
     // load Custom.wz from file system
     IWzFileSystemPtr fs;
@@ -85,13 +142,20 @@ void CWvsApp::InitializeResMan_hook() {
     GetModuleFileNameA(nullptr, sStartPath, MAX_PATH);
     Dir_BackSlashToSlash(sStartPath);
     Dir_upDir(sStartPath);
+    ResmanLog("InitializeResMan_hook: loading Custom.wz from %s", sStartPath);
     fs->Init(sStartPath);
 
     IWzPackagePtr pPackage;
     PcCreateObject<IWzPackagePtr>(L"NameSpace#Package", pPackage, nullptr);
     IWzSeekableArchivePtr pArchive = fs->item[L"Custom.wz"].GetUnknown();
+    if (!pArchive) {
+        ResmanLog("InitializeResMan_hook: Custom.wz NOT FOUND in filesystem!");
+        return;
+    }
+    ResmanLog("InitializeResMan_hook: Custom.wz archive opened");
     pPackage->Init(L"83", L"Custom", pArchive);
     g_pCustomNameSpace->Mount(L"/", pPackage, 1);
+    ResmanLog("InitializeResMan_hook: Custom.wz mounted");
 
     // iterate custom namespace
     std::vector<std::tuple<Ztl_bstr_t, IEnumVARIANTPtr>> stack;
@@ -124,6 +188,7 @@ void CWvsApp::InitializeResMan_hook() {
         }
     }
     std::sort(g_vecOverrides.begin(), g_vecOverrides.end()); // uses operator<
+    ResmanLog("InitializeResMan_hook: %d override paths registered", (int)g_vecOverrides.size());
 
     // NameSpace.dll - try resolving from g_pCustomNameSpace
     IWzNameSpaceImpl::raw__OnGetLocalObject_orig = static_cast<IWzNameSpaceImpl::raw__OnGetLocalObject_t>(GetAddressByPattern("NAMESPACE.DLL", "B8 ?? ?? ?? ?? E8 ?? ?? ?? ?? 81 EC 80"));
@@ -132,6 +197,7 @@ void CWvsApp::InitializeResMan_hook() {
     // PCOM.dll - patch CWzProperty objects during serialization
     CWzProperty::raw_Serialize_orig = static_cast<CWzProperty::raw_Serialize_t>(GetAddressByPattern("PCOM.DLL", "B8 ?? ?? ?? ?? E8 ?? ?? ?? ?? 83 EC 68"));
     ATTACH_HOOK(CWzProperty::raw_Serialize_orig, CWzProperty::raw_Serialize_hook);
+    ResmanLog("InitializeResMan_hook: done");
 }
 
 void CWvsApp::CleanUp_hook() {

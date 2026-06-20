@@ -2,3 +2,7 @@
 .vs
 .vscode
 build/
+增加功能/
+build_debug.bat
+build_release.bat
+快捷栏键位布局.txt

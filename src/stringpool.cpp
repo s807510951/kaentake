@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "hook.h"
 #include "ztl/ztl.h"
+#include <cstdlib>
 
 #define REPLACE_STRING(INDEX, NEW_STRING) \
     do { \
@@ -45,6 +46,22 @@ void EncodeString(int nIdx, const char* sSource, char* sDestination) {
     sDestination[0] = 0;
     sDestination[n + 1] = 0;
     StringPool::ms_aString[nIdx] = sDestination;
+}
+
+char* EncodeStringAlloc(const char* sSource) {
+    StringPool::Key keygen(StringPool::ms_aKey, 0x10, 0);
+    size_t n = strlen(sSource);
+    char* sDestination = static_cast<char*>(malloc(n + 2));
+    for (size_t i = 0; i < n; ++i) {
+        unsigned char key = keygen.m_aKey[i % 0x10];
+        sDestination[i + 1] = sSource[i] ^ key;
+        if (static_cast<uint8_t>(sSource[i]) == static_cast<uint8_t>(key)) {
+            sDestination[i + 1] = key;
+        }
+    }
+    sDestination[0] = 0;
+    sDestination[n + 1] = 0;
+    return sDestination;
 }
 
 

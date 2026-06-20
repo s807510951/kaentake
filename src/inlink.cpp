@@ -2,6 +2,37 @@
 #include "hook.h"
 #include "wvs/util.h"
 #include "ztl/ztl.h"
+#include <cstdio>
+#include <cstdarg>
+
+static void InlinkLog(const char* sFormat, ...) {
+    char msg[1024];
+    va_list args;
+    va_start(args, sFormat);
+    _vsnprintf_s(msg, sizeof(msg), _TRUNCATE, sFormat, args);
+    va_end(args);
+
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    char line[1200];
+    _snprintf_s(line, sizeof(line), _TRUNCATE, "[%02d:%02d:%02d.%03d] [inlink] %s\r\n",
+                st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, msg);
+
+    char path[MAX_PATH];
+    GetModuleFileNameA(nullptr, path, MAX_PATH);
+    char* slash = strrchr(path, '\\');
+    if (slash) { *(slash + 1) = '\0'; }
+    strcat_s(path, MAX_PATH, "beauty_debug.txt");
+
+    HANDLE h = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                           nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h != INVALID_HANDLE_VALUE) {
+        SetFilePointer(h, 0, nullptr, FILE_END);
+        DWORD written = 0;
+        WriteFile(h, line, static_cast<DWORD>(strlen(line)), &written, nullptr);
+        CloseHandle(h);
+    }
+}
 
 
 class CWzCanvas : public IWzCanvas {
@@ -34,16 +65,41 @@ void HandleLinkProperty(IWzCanvasPtr pCanvas) {
     };
     size_t nLinkProperty = sizeof(asLinkProperty) / sizeof(asLinkProperty[0]);
     for (size_t i = 0; i < nLinkProperty; ++i) {
-        Ztl_variant_t vLink = pCanvas->property->item[asLinkProperty[i]];
+        Ztl_variant_t vLink;
+        try {
+            vLink = pCanvas->property->item[asLinkProperty[i]];
+        } catch (...) {
+            InlinkLog("HandleLinkProperty: EXCEPTION reading property[%ls]", asLinkProperty[i]);
+            continue;
+        }
         if (V_VT(&vLink) != VT_BSTR) {
             continue;
         }
 
+        InlinkLog("HandleLinkProperty: resolving %ls=\"%ls\"", asLinkProperty[i], V_BSTR(&vLink));
+
         // Try resolving source canvas
         IWzCanvasPtr pSource;
-        IUnknownPtr pUnknown = get_rm()->GetObjectA(V_BSTR(&vLink)).GetUnknown();
-        if (!pUnknown || FAILED(pUnknown->QueryInterface(&pSource))) {
-            DEBUG_MESSAGE("Could not resolve linked canvas %ls=\"%ls\"", asLinkProperty[i], V_BSTR(&vLink));
+        IUnknownPtr pUnknown;
+        try {
+            Ztl_variant_t vObj = get_rm()->GetObjectA(V_BSTR(&vLink));
+            InlinkLog("HandleLinkProperty: GetObjectA returned VT=%d for \"%ls\"", V_VT(&vObj), V_BSTR(&vLink));
+            if (V_VT(&vObj) == VT_EMPTY || V_VT(&vObj) == VT_ERROR) {
+                InlinkLog("HandleLinkProperty: path not found \"%ls\"", V_BSTR(&vLink));
+                continue;
+            }
+            pUnknown = vObj.GetUnknown();
+        } catch (...) {
+            InlinkLog("HandleLinkProperty: EXCEPTION in GetObjectA/GetUnknown for \"%ls\"", V_BSTR(&vLink));
+            continue;
+        }
+        if (!pUnknown) {
+            InlinkLog("HandleLinkProperty: GetUnknown returned null for \"%ls\"", V_BSTR(&vLink));
+            continue;
+        }
+        HRESULT hr = pUnknown->QueryInterface(&pSource);
+        if (FAILED(hr)) {
+            InlinkLog("HandleLinkProperty: QueryInterface failed hr=0x%08X for \"%ls\"", (unsigned)hr, V_BSTR(&vLink));
             continue;
         }
 
@@ -57,15 +113,25 @@ void HandleLinkProperty(IWzCanvasPtr pCanvas) {
         IWzVector2DPtr pOrigin = pCanvas->property->item[L"origin"].GetUnknown();
         pCanvas->cx = pOrigin->x;
         pCanvas->cy = pOrigin->y;
+        InlinkLog("HandleLinkProperty: resolved OK %ls=\"%ls\" (%dx%d)", asLinkProperty[i], V_BSTR(&vLink), nWidth, nHeight);
         break;
     }
 }
 
 static auto get_unknown_orig = reinterpret_cast<IUnknownPtr*(__cdecl*)(IUnknownPtr*, Ztl_variant_t&)>(0x00414ADA);
 IUnknownPtr* __cdecl get_unknown_hook(IUnknownPtr* result, Ztl_variant_t& v) {
-    get_unknown_orig(result, v);
+    try {
+        get_unknown_orig(result, v);
+    } catch (...) {
+        InlinkLog("get_unknown_hook: EXCEPTION in get_unknown_orig VT=%d", V_VT(&v));
+        return result;
+    }
+    if (!result) {
+        return result;
+    }
     IWzCanvasPtr pCanvas;
-    if (SUCCEEDED(result->QueryInterface(__uuidof(IWzCanvas), &pCanvas))) {
+    HRESULT hr = result->QueryInterface(__uuidof(IWzCanvas), &pCanvas);
+    if (SUCCEEDED(hr) && pCanvas) {
         HandleLinkProperty(pCanvas);
     }
     return result;
@@ -73,9 +139,19 @@ IUnknownPtr* __cdecl get_unknown_hook(IUnknownPtr* result, Ztl_variant_t& v) {
 
 static auto Ztl_variant_t__GetUnknown = reinterpret_cast<IUnknown*(__thiscall*)(Ztl_variant_t*, bool, bool)>(0x004032B2);
 IUnknown* __fastcall Ztl_variant_t__GetUnknown_hook(Ztl_variant_t* pThis, void* _EDX, bool fAddRef, bool fTryChangeType) {
-    IUnknownPtr result = pThis->GetUnknown(fAddRef, fTryChangeType);
+    IUnknownPtr result;
+    try {
+        result = pThis->GetUnknown(fAddRef, fTryChangeType);
+    } catch (...) {
+        InlinkLog("Ztl_variant_t__GetUnknown_hook: EXCEPTION VT=%d", V_VT(pThis));
+        return nullptr;
+    }
+    if (!result) {
+        return result;
+    }
     IWzCanvasPtr pCanvas;
-    if (SUCCEEDED(result.QueryInterface(__uuidof(IWzCanvas), &pCanvas))) {
+    HRESULT hr = result.QueryInterface(__uuidof(IWzCanvas), &pCanvas);
+    if (SUCCEEDED(hr) && pCanvas) {
         HandleLinkProperty(pCanvas);
     }
     return result;

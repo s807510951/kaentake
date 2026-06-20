@@ -15,6 +15,9 @@ add_library(injector SHARED
     stringpool.cpp
     debug.cpp
     hook.cpp
+    beautyshop.cpp
+    quickslots.cpp
+    localize.cpp
 )
 
 target_precompile_headers(injector PRIVATE pch.h)

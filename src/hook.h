@@ -55,6 +55,10 @@ void AttachMobHpTagMod();
 void AttachToolTipMod();
 void AttachIconIconMod();
 void AttachTempStatMod();
+void AttachBeautyShopMod();
+void AttachQuickSlotsMod();
+void AttachLocalizeMod();
+char* EncodeStringAlloc(const char* sSource);
 
 inline void AttachClientHooks() {
     AttachClientBypass();
@@ -68,6 +72,9 @@ inline void AttachClientHooks() {
     AttachToolTipMod();
     AttachIconIconMod();
     AttachTempStatMod();
+    AttachBeautyShopMod();
+    AttachQuickSlotsMod();
+    AttachLocalizeMod();
 }
 
 

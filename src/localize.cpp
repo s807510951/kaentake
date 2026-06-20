@@ -322,6 +322,68 @@ static void ApplyFixEquipJobNamePos() {
     Patch1(0x008EC6CF + 1, 0xC8);  // Pirate
 }
 
+// ============ FixHighVersionFaceHair ============
+// Support high-version face/hair types (2-6)
+DWORD faceRtn = 0x005C95BF;
+DWORD hairRtn = 0x005C958D;
+DWORD faceHairCaveRtn = 0x005C9505;
+
+__declspec(naked) void faceHairCave() {
+    __asm {
+        cmp eax, 2
+        jz label_face
+        cmp eax, 3
+        jz label_hair
+        cmp eax, 4
+        jz label_hair
+        cmp eax, 5
+        jz label_face
+        cmp eax, 6
+        jz label_hair
+        jmp faceHairCaveRtn
+    label_face:
+        jmp faceRtn
+    label_hair:
+        jmp hairRtn
+    }
+}
+
+DWORD faceHairCave2Rtn = 0x009ACAA0;
+DWORD faceHairCave2Jmp = 0x009ACAA4;
+
+__declspec(naked) void faceHairCave2() {
+    __asm {
+        cmp eax, 2
+        jz label
+        cmp eax, 5
+        jz label
+        jmp faceHairCave2Jmp
+    label:
+        jmp faceHairCave2Rtn
+    }
+}
+
+DWORD faceHairCave3Rtn = 0x009ACAAC;
+
+__declspec(naked) void faceHairCave3() {
+    __asm {
+        cmp eax, 3
+        jz label
+        cmp eax, 4
+        jz label
+        cmp eax, 6
+    label:
+        setnz cl
+        jmp faceHairCave3Rtn
+    }
+}
+
+static void ApplyFixHighVersionFaceHair() {
+    PatchCodeCave(0x005C94F3, faceHairCave, 18);   // Remove display restriction
+    PatchCodeCave(0x009ACA9B, faceHairCave2, 5);    // Remove NPC dialogue restriction
+    PatchCodeCave(0x009ACAA6, faceHairCave3, 6);    // Remove NPC dialogue restriction
+}
+
 // ============ Main Attach Function ============
 void AttachLocalizeMod() {
     // Read config
@@ -340,6 +402,8 @@ void AttachLocalizeMod() {
         ApplyFixDateFormat();
         ApplyFixEquipJobNamePos();
     }
+
+    ApplyFixHighVersionFaceHair();
 
     // IME support
     if (g_nImeType == 0) {

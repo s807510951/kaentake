@@ -129,9 +129,7 @@ static WSPPROC_TABLE g_ProcTable;
 static ULONG g_uNexonAddress;
 
 constexpr const char* g_asOriginalAddress[] = {
-    "63.251.217.2",
-    "63.251.217.3",
-    "63.251.217.4",
+    "127.0.0.1",
 };
 
 int WSPAPI WSPConnect_hook(SOCKET s, const struct sockaddr FAR* name, int namelen, LPWSABUF lpCallerData, LPWSABUF lpCalleeData, LPQOS lpSQOS, LPQOS lpGQOS, LPINT lpErrno) {

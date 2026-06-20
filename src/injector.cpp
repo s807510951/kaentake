@@ -41,6 +41,15 @@ void ProcessConfigFile() {
     g_nServerPort = atoi(sBuffer);
 }
 
+void ProcessDefaults() {
+    if (!g_sServerHost) {
+        g_sServerHost = _strdup(CONSTANTS_DEFAULT_HOST);
+    }
+    if (!g_nServerPort) {
+        g_nServerPort = CONSTANTS_DEFAULT_PORT;
+    }
+}
+
 
 BOOL WINAPI DllMain(HINSTANCE hModule, DWORD fdwReason, LPVOID lpvReserved) {
     switch (fdwReason) {
@@ -48,6 +57,7 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD fdwReason, LPVOID lpvReserved) {
         DisableThreadLibraryCalls(hModule);
         ProcessCommandLine();
         ProcessConfigFile();
+        ProcessDefaults();
         AttachSystemHooks();
         break;
     case DLL_PROCESS_DETACH:

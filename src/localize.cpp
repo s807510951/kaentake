@@ -3,7 +3,9 @@
 #include "constants.h"
 #include "ztl/ztl.h"
 #include "localize_data.h"
+#include "wvs/util.h"
 #include <imm.h>
+#include <cmath>
 #pragma comment(lib, "imm32.lib")
 
 // Config flags
@@ -396,6 +398,200 @@ static void ApplyFixScriptDlgSize() {
     Patch4(0x009A3D81, 480);       // UI元素宽度
 }
 
+// ============ 1. 伤害/属性上限调整 ============
+static void ApplyDamageCap() {
+    // 物理攻击PAD上限去除限制（默认1999 → 2147483646）
+    Patch4(0x0077E055 + 1, 2147483646);
+    Patch4(0x0077E12F + 1, 2147483646);
+    // 伤害上限调整（默认199999 → 1999999）
+    Patch4(0x008C3304 + 1, 1999999);
+    // 魔攻上限调整（默认1999 → 1999）
+    Patch4(0x0077E215 + 1, 1999);
+    Patch4(0x00780620 + 1, 1999);
+    // 命中上限调整（默认999）
+    Patch4(0x007806D0 + 1, 999);
+    // 回避上限调整（默认999）
+    Patch4(0x00780702 + 1, 999);
+    // 反伤PDamage去除限制（默认1999 → 2147483646）
+    Patch4(0x0078FF5F + 1, 2147483646);
+    Patch4(0x0078E061 + 1, 2147483646);
+    Patch4(0x0078E67D + 1, 2147483646);
+    // 魔攻MDamage去除限制（默认1999 → 2147483646）
+    Patch4(0x0079166C + 1, 2147483646);
+    Patch4(0x00791CD5 + 1, 2147483646);
+    Patch4(0x007918FC + 1, 2147483646);
+    // 伤害显示上限（double 1999999）
+    double atkOutCap = 1999999.0;
+    PatchMemory(TO_PVOID(0x00AFE8A0), &atkOutCap, sizeof(double));
+}
+
+// ============ 4. 技能提示框中文字符宽度修复 ============
+static int g_nCharLen = 55;
+
+static void CalcCharLen(const char* word) {
+    const std::string str = std::string(word);
+    auto firstByte = static_cast<unsigned char>(str[0]);
+    if (str.length() < 55) {
+        g_nCharLen = 55;
+        return;
+    }
+    for (int i = 0; i < 60; i++) {
+        firstByte = static_cast<unsigned char>(str[i]);
+        if (firstByte >= 0x81 && firstByte <= 0xFE) {
+            i++; // 中文字符占双字节，跳过
+            continue;
+        }
+        if (i >= 55) {
+            g_nCharLen = i;
+            break;
+        }
+    }
+}
+
+constexpr DWORD skillToolTipNewRtn = 0x008F3844;
+__declspec(naked) void skillToolTipNew() {
+    __asm {
+        mov eax, [ebp + 0Ch]
+        push eax
+        call CalcCharLen
+        pop eax
+        mov eax, g_nCharLen
+        mov[ebp - 1Ch], eax
+        lea eax, [ebp - 30h]
+        jmp skillToolTipNewRtn
+    }
+}
+
+static void ApplyFixSkillToolTip() {
+    PatchNop(0x008E4252, 0x008E4254);  // 修复技能边界检查
+    PatchCodeCave(0x008F383E, skillToolTipNew, 6);  // 修复技能描述中文字符宽度计算
+}
+
+// ============ 8. 更多消息显示（MoreGainMsgs） ============
+static int g_nMsgAmount = 26;  // 消息显示数量
+static int g_nMoreGainMsgsOffset = 6;
+static int g_nMoreGainMsgsFadeOffset = 0;
+static int g_nMoreGainMsgsFade1Offset = 0;
+
+DWORD dwMoreGainMsgsRetn = 0x0089B18B;
+__declspec(naked) void ccMoreGainMsgs() {
+    __asm {
+        mov    eax, DWORD PTR[edi + 0x10]
+        cmp    eax, g_nMoreGainMsgsOffset
+        jmp    dwMoreGainMsgsRetn
+    }
+}
+
+DWORD dwMoreGainMsgsFadeRetn = 0x0089B56A;
+__declspec(naked) void ccMoreGainMsgsFade() {
+    __asm {
+        add    eax, g_nMoreGainMsgsFadeOffset
+        push   3
+        jmp    dwMoreGainMsgsFadeRetn
+    }
+}
+
+DWORD dwMoreGainMsgsFade1Retn = 0x0089B4EB;
+__declspec(naked) void ccMoreGainMsgsFade1() {
+    __asm {
+        push   g_nMoreGainMsgsFade1Offset
+        jmp    dwMoreGainMsgsFade1Retn
+    }
+}
+
+static void ApplyMoreGainMsgs() {
+    int msgAmnt = g_nMsgAmount;
+    int msgAmntOffset = msgAmnt * 14;
+
+    Patch4(0x0089AEE2 + 3, msgAmnt);           // moregainmsgs part 1
+    g_nMoreGainMsgsOffset = msgAmnt;            // param for ccmoregainmsgs
+    PatchCodeCave(0x0089B185, ccMoreGainMsgs, 6);  // moregainmsgs part 2
+    g_nMoreGainMsgsFadeOffset = 15000;          // param for ccmoregainmsgsFade
+    PatchCodeCave(0x0089B563, ccMoreGainMsgsFade, 7);  // moregainmsgsFade
+    g_nMoreGainMsgsFade1Offset = 255 * 4 / 3;   // param for ccmoregainmsgsFade1
+    PatchCodeCave(0x0089B4E6, ccMoreGainMsgsFade1, 5);  // moregainmsgsFade1
+}
+
+// ============ 15. 聊天窗口位置修复 ============
+const DWORD chatTextPosRtn = 0x008DD075;
+__declspec(naked) void chatTextPos() {
+    __asm {
+        add eax, [edi + 0CFCh]
+        cmp[edi + 0D00h], 3
+        jz label_type3
+        cmp[edi + 0D00h], 2
+        jz label_type2
+
+    label_type1:        // 状态1 正常
+        sub eax, 1
+        jmp label_rtn
+
+    label_type2:        // 状态2 正常 + 展开
+        jmp label_rtn
+
+    label_type3:        // 状态3 扩展
+        sub eax, 2
+
+    label_rtn:
+        jmp chatTextPosRtn
+    }
+}
+
+static void ApplyFixChatPos() {
+    PatchCodeCave(0x008DD06F, chatTextPos, 6);
+}
+
+// ============ 23. 高伤害显示时属性窗口加宽 ============
+DWORD apDetailBtnRtn = 0x008C4E22;
+__declspec(naked) void apDetailBtn() {
+    __asm {
+        push    144h
+        push    99h
+        jmp apDetailBtnRtn
+    }
+}
+
+static void ApplyWideStatWindow() {
+    // 当伤害显示上限 > 999999 时，加宽属性窗口各元素位置
+    Patch4(0x008C485A + 1, 192);   // 属性关闭按钮x
+    Patch4(0x008C4AB3 + 1, 210);   // 属性列
+    Patch4(0x008C510A + 1, 218);   // 属性详细列
+    Patch4(0x008C4EA2 + 1, 210);   // 属性详情起始x
+    Patch4(0x008C5760 + 1, 210);   // 属性详情切换x
+    Patch4(0x008C7AD9 + 1, 185);   // 属性详情按钮x
+    Patch4(0x008C2754 + 1, 195);   // 属性详情关闭按钮x
+    Patch4(0x008C6C72 + 1, 210);   // 移动时属性详情x
+    PatchCodeCave(0x008C4E1B, apDetailBtn, 7);  // 详情按钮
+}
+
+// ============ 25. 通知弹窗位置修复 ============
+static void ApplyNotifyPopupPos() {
+    int nWidth = get_screen_width();
+    int nHeight = get_screen_height();
+    Patch4(0x0049D218 + 1, nWidth - 16);    // 通知弹窗位置边界 x
+    Patch4(0x0049D268 + 1, nHeight - 16);   // 通知弹窗位置边界 y
+}
+
+// ============ 26. 截图功能高分辨率适配 ============
+static void ApplyScreenshotFix() {
+    int nWidth = get_screen_width();
+    int nHeight = get_screen_height();
+    Patch4(0x00744EB4 + 1, nWidth);                     // 截图宽度
+    Patch4(0x00744EB9 + 1, nHeight);                    // 截图高度
+    Patch4(0x00744E2A + 1, 3 * nWidth * nHeight);      // 截图缓冲区3x
+    Patch4(0x00744E43 + 1, nWidth * nHeight);           // 截图缓冲区1x
+    Patch4(0x00744DA6 + 1, 4 * nWidth * nHeight);      // 截图缓冲区4x
+}
+
+// ============ 27. 相机移动适配 ============
+static void ApplyCameraMovementFix() {
+    int nWidth = get_screen_width();
+    int nHeight = get_screen_height();
+    Patch4(0x00641F61 + 1, (unsigned int)floor(nWidth / 2.0));    // VRleft
+    Patch4(0x00641FC8 + 1, (unsigned int)floor(nHeight / 2.0));   // VRTop
+    Patch4(0x0064208F + 1, (unsigned int)floor(nHeight / 2.0));   // VRbottom
+}
+
 // ============ Main Attach Function ============
 void AttachLocalizeMod() {
     // Read config
@@ -424,4 +620,14 @@ void AttachLocalizeMod() {
     } else {
         ImeHookNew();
     }
+
+    // 新增功能
+    ApplyDamageCap();           // 1. 伤害/属性上限调整
+    ApplyFixSkillToolTip();     // 4. 技能提示框中文字符宽度修复
+    ApplyMoreGainMsgs();        // 8. 更多消息显示
+    ApplyFixChatPos();          // 15. 聊天窗口位置修复
+    ApplyWideStatWindow();      // 23. 高伤害显示时属性窗口加宽
+    ApplyNotifyPopupPos();      // 25. 通知弹窗位置修复
+    ApplyScreenshotFix();       // 26. 截图功能高分辨率适配
+    ApplyCameraMovementFix();   // 27. 相机移动适配
 }

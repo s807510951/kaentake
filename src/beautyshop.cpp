@@ -1148,7 +1148,7 @@ void CBeautyShop::OnMouseButton(unsigned int msg, unsigned int wParam, int rx, i
                 play_ui_sound(L"BtMouseClick");
                 int delSlot = i;
                 int delType = m_nCurrentTab;
-                ZXString<char> zmsg("Are you sure want to delete this?");
+                ZXString<char> zmsg("确定要删除吗？");
                 int r = 0;
                 try { r = CUtilDlg_YesNo(zmsg, nullptr, nullptr, 0, 0); }
                 catch (...) { r = 0; }

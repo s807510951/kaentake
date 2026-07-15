@@ -56,6 +56,7 @@ void AttachToolTipMod();
 void AttachIconIconMod();
 void AttachTempStatMod();
 void AttachBeautyShopMod();
+void AttachBagWindowMod();
 void AttachQuickSlotsMod();
 void AttachLocalizeMod();
 char* EncodeStringAlloc(const char* sSource);
@@ -73,6 +74,7 @@ inline void AttachClientHooks() {
     AttachIconIconMod();
     AttachTempStatMod();
     AttachBeautyShopMod();
+    AttachBagWindowMod();
     AttachQuickSlotsMod();
     AttachLocalizeMod();
 }

@@ -15,6 +15,9 @@
 #pragma comment(lib, "winmm.lib")
 #pragma warning(disable : 4996)
 
+// Storage Bag (storagebag.cpp): WndProc-level mouse dispatch for the inventory BAG button + bag window drag.
+bool BagWindow_HandleMouseMessage(UINT& msg, WPARAM wParam, LPARAM lParam, LRESULT* plResult);
+
 
 class ZSocketBase {
 private:
@@ -365,6 +368,9 @@ int CLogin::SendCheckPasswordPacket_hook(char* sID, char* sPasswd) {
 
 
 int CWndMan::TranslateMessage_hook(UINT& msg, WPARAM& wParam, LPARAM& lParam, LRESULT* plResult) {
+    if (BagWindow_HandleMouseMessage(msg, wParam, lParam, plResult)) {
+        return 0;
+    }
     if (msg == WM_MOUSEWHEEL) {
         // CWndMan::ProcessMouse(this, msg, wParam, lParam);
         *plResult = reinterpret_cast<LRESULT(__thiscall*)(CWndMan*, UINT, WPARAM, LPARAM)>(0x009E3AE6)(this, msg, wParam, lParam);

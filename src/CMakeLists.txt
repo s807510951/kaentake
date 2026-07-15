@@ -16,6 +16,7 @@ add_library(injector SHARED
     debug.cpp
     hook.cpp
     beautyshop.cpp
+    storagebag.cpp
     quickslots.cpp
     localize.cpp
 )

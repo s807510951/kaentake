@@ -44,10 +44,7 @@ void ProcessConfigFile() {
 void ProcessDefaults() {
     if (!g_sServerHost) {
         g_sServerHost = _strdup(CONSTANTS_DEFAULT_HOST);
-    }
-    if (!g_nServerPort) {
-        g_nServerPort = CONSTANTS_DEFAULT_PORT;
-    }
+    }    
 }
 
 

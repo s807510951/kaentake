@@ -1178,7 +1178,7 @@ void CUIBagWindow::Draw(const RECT* pRect) {
             try { pCanvas->DrawTextA(kSearchTextX, kSearchTextY, Ztl_bstr_t(m_search), pfDk, Ztl_variant_t(), Ztl_variant_t()); } catch (...) {}
         } else if (!m_searchActive) {
             static const wchar_t* kHints[kKindCount] =
-                { L"Buscar minérios...", L"Buscar pergaminhos...", L"Buscar cadeiras...", L"Buscar montarias..." };
+                { L"搜索矿石...", L"搜索卷轴...", L"搜索椅子...", L"搜索坐骑..." };
             const wchar_t* hint = kHints[m_activeKind];
             try { pCanvas->DrawTextA(kSearchTextX, kSearchTextY, Ztl_bstr_t(hint), pfDk, Ztl_variant_t(), Ztl_variant_t()); } catch (...) {}
         }

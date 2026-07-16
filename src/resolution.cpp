@@ -758,7 +758,12 @@ void AttachResolutionMod() {
     PatchCall(0x0055C08E, &CField_LimitedView__CopyEx_hook);
     PatchCall(0x0055C1DD, &CField_LimitedView__CopyEx_hook);
 
-    // CUIScreenMsg - screen message width
+    // CUIScreenMsg - screen message (EXP gain / item pickup)
+    Patch1(0x0089B636 + 2, 0x01);                              // fix unsigned int crash after char select
+    int msgAmntOffset = 26 * 14;                                // MsgAmount=26, same as BeiDou-ijl15
+    Patch4(0x0089B639 + 1, get_screen_height() - 6 - msgAmntOffset - 150); // inventory/exp gain y axis
+    Patch4(0x0089B6F7 + 1, get_screen_width() - 300);          // inventory/exp gain x axis
+    Patch4(0x00897BB4 + 1, (get_screen_width() / 2) - 143);   // exp gain/item pickup msg offset
     Patch4(0x0089AF33 + 1, SCREEN_MESSAGE_WIDTH);              // CUIScreenMsg::CUIScreenMsg
     Patch4(0x0089B2C6 + 1, SCREEN_MESSAGE_WIDTH);              // CUIScreenMsg::ScrMsg_Add
     PatchCall(0x0089B6FE, &CUIScreenMsg__raw_RelMove_hook, 6); // CUIScreenMsg::LayoutScrMsg
